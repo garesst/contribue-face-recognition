@@ -7,6 +7,8 @@ import numpy as np
 from io import BytesIO
 from PIL import Image
 
+from ocr.readDocument import verifyOcr, verifyOcrWithPaddle
+
 app = FastAPI()
 
 
@@ -84,3 +86,17 @@ async def face(data: ImageCompare):
 
     # Responder con los resultados de DeepFace y anti-spoofing
     return deepface_result
+
+
+@app.post("/ocr/")
+async def ocr(data: ImageBase64):
+    result = verifyOcr(decode_base64_image(data.image_base64))
+
+    return result
+
+
+@app.post("/ocr2/")
+async def ocr2(data: ImageBase64):
+    result = verifyOcrWithPaddle(decode_base64_image(data.image_base64))
+
+    return result

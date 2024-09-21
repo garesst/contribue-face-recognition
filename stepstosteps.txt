@@ -1,1 +1,1 @@
-1.0 -> pip install deepface fastapi uvicorn opencv-python tf-keras python-multipart pillow facenet-pytorch
+1.0 -> pip install deepface fastapi uvicorn opencv-python tf-keras python-multipart pillow facenet-pytorch easyocr paddlepaddle paddleocr
