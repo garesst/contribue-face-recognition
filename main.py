@@ -2,14 +2,24 @@ from deepface import DeepFace
 from fastapi import FastAPI
 from pydantic import BaseModel
 import cv2
+import json
 import base64
 import numpy as np
 from io import BytesIO
 from PIL import Image
+from starlette.middleware.cors import CORSMiddleware
 
-from ocr.readDocument import verifyOcr, verifyOcrWithPaddle
+from ocr.readDocument import verifyOcr, verifyOcrWithPaddle, read_pdf417
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # Modelo Pydantic para recibir base64 en el cuerpo de la solicitud
@@ -20,6 +30,11 @@ class ImageBase64(BaseModel):
 class ImageCompare(BaseModel):
     image_one: str
     image_two: str
+
+
+class IdentificationDocument(BaseModel):
+    frontDocument: str
+    backDocument: str
 
 
 def decode_base64_image(base64_string: str) -> np.array:
@@ -38,6 +53,24 @@ def recognize_face_with_deepface(image: np.array):
         result = DeepFace.analyze(img_path="temp_image.jpg", actions=['age', 'gender', 'emotion', 'race'],
                                   enforce_detection=False, anti_spoofing=True)
 
+        return result
+
+    except Exception as e:
+        # Devolver un mensaje de error en inglés si ocurre un problema
+        return {
+            "error": "Anti-spoofing check failed. Please make sure you are not using a spoofed image.",
+            "details": str(e)  # Detalles opcionales del error
+        }
+
+
+def recognize_face(image: np.array):
+    try:
+        # Guardar temporalmente la imagen para ser usada por DeepFace
+        cv2.imwrite("temp_image.jpg", image)
+
+        # Usar DeepFace para análisis facial
+        result = DeepFace.analyze(img_path="temp_image.jpg", actions=['age', 'gender', 'emotion', 'race'],
+                                  enforce_detection=True, anti_spoofing=False)
         return result
 
     except Exception as e:
@@ -96,7 +129,19 @@ async def ocr(data: ImageBase64):
 
 
 @app.post("/ocr2/")
-async def ocr2(data: ImageBase64):
-    result = verifyOcrWithPaddle(decode_base64_image(data.image_base64))
+async def ocr2(data: IdentificationDocument):
+    resultFront = verifyOcrWithPaddle(decode_base64_image(data.frontDocument), "front")
+    resultBack = verifyOcrWithPaddle(decode_base64_image(data.backDocument), "back")
+    image = decode_base64_image(data.frontDocument)
+    deepface_result = recognize_face(image)
+    pdfRead = read_pdf417(decode_base64_image(data.backDocument))
+    if isinstance(deepface_result, list):
+        best_face = max(deepface_result, key=lambda face: face.get("face_confidence", 0))
+    else:
+        best_face = deepface_result
+    face_result = {'Edad': best_face['age'], 'Genero': best_face['dominant_gender'],
+                   'Emocion': best_face['dominant_emotion'], 'Raza': best_face['dominant_race'],
+                   'face_confidence': best_face['face_confidence']}
+    result = {'deepface_analysis': face_result, 'front': resultFront, 'back': resultBack, 'pdf14': pdfRead}
 
     return result
